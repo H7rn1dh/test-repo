@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="../style.css" />
+
+    <title>FormCheck.ai</title>
+  </head>
+  <body>
+    <h1>FormCheck.ai</h1>
+    <div id="video-container">
+      <img src="/video_feed" />
+    </div>
+
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+      <input type="file" name="video" />
+      <button type="submit">Analyze Video</button>
+    </form>
+
+    <label for="camera">Choose camera:</label>
+    <select id="camera">
+      <option value="0">Camera 0</option>
+      <option value="1">Camera 1</option>
+      <option value="2">Camera 2</option>
+    </select>
+  </body>
+</html>
