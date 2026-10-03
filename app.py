@@ -6,23 +6,51 @@ from flask import Flask, render_template, Response
 from flask import request
 import webbrowser
 
+camera = 0 # default camera
+camera_running = False
+
 app = Flask(__name__)
 
+def find_cameras():
+    cameras = []
+
+    for camera in range(5):
+        webcam = cv.VideoCapture(camera)
+
+        if webcam.isOpened():
+            cameras.append(camera)
+
+        webcam.release()
+
+    return cameras
+
+@app.route("/select_camera", methods=["POST"])
+def select_camera():
+    global camera
+
+    data = request.get_json()
+    camera = int(data["camera"])
+    print(camera)
+    return "Camera Selected"
 
 @app.route("/")  # when someone goes to the "/" (homepage) run the code underneath
 def home():
-    return render_template("index.html")  # homepage
+    cameras = find_cameras()
+
+    return render_template("index.html", cameras=cameras)  # homepage
 
 
-def generate_frames(webcam_num):
-    webcam = cv.VideoCapture(webcam_num)
+def generate_frames():
+    webcam = cv.VideoCapture(camera)
 
-    while True:
+    while camera_running:
         is_true, frame = webcam.read()
         if not is_true:
             break
 
-        rgb_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        resized_frame = cv.resize(frame, (640,450), interpolation=cv.INTER_AREA)
+
+        rgb_frame = cv.cvtColor(resized_frame, cv.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
         result = landmarker.detect(mp_image)
@@ -32,21 +60,21 @@ def generate_frames(webcam_num):
             left_eye = pose[mp.tasks.vision.PoseLandmark.LEFT_EYE]
             right_eye = pose[mp.tasks.vision.PoseLandmark.RIGHT_EYE]
 
-            left_eye_px_x = int(frame.shape[1] * left_eye.x)
-            left_eye_px_y = int(frame.shape[0] * left_eye.y)
+            left_eye_px_x = int(resized_frame.shape[1] * left_eye.x)
+            left_eye_px_y = int(resized_frame.shape[0] * left_eye.y)
 
-            right_eye_px_x = int(frame.shape[1] * right_eye.x)
-            right_eye_px_y = int(frame.shape[0] * right_eye.y)
+            right_eye_px_x = int(resized_frame.shape[1] * right_eye.x)
+            right_eye_px_y = int(resized_frame.shape[0] * right_eye.y)
 
             cv.circle(
-                frame, (left_eye_px_x, left_eye_px_y), 10, (255, 0, 0), thickness=-1
+                resized_frame, (left_eye_px_x, left_eye_px_y), 10, (255, 0, 0), thickness=-1
             )
             cv.circle(
-                frame, (right_eye_px_x, right_eye_px_y), 10, (0, 255, 0), thickness=-1
+                resized_frame, (right_eye_px_x, right_eye_px_y), 10, (0, 255, 0), thickness=-1
             )
 
             cv.line(
-                frame,
+                resized_frame,
                 (left_eye_px_x, left_eye_px_y),
                 (right_eye_px_x, right_eye_px_y),
                 (0, 0, 0),
@@ -54,10 +82,10 @@ def generate_frames(webcam_num):
             )
 
         # takes the frame and compresses it to JPEG(buffer contains it)
-        _ret, buffer = cv.imencode(".jpg", frame)  # "_" prefix means variable not used
-        frame = buffer.tobytes()  # converts encoded img to bytes for HTTP
+        _ret, buffer = cv.imencode(".jpg", resized_frame)  # "_" prefix means variable not used
+        resized_frame = buffer.tobytes()  # converts encoded img to bytes for HTTP
         # below: streaming the footage
-        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+        yield (b"--resized_frame\r\nContent-Type: image/jpeg\r\n\r\n" + resized_frame + b"\r\n")
         # yield vs return : yield -> "Here's one thing, I'll give you another thing later"
         #                  return-> "I'm done"
         #  b -> means bytes
@@ -68,20 +96,25 @@ def generate_frames(webcam_num):
 def video_feed():
     # runs when the browser asks for video feed
     return Response(
-        generate_frames(1), mimetype="multipart/x-mixed-replace; boundary=frame"
+        generate_frames(),
+        mimetype="multipart/x-mixed-replace; boundary=resized_frame"
     )
     # Response makes a HTTP response
     # generate_frames() tells the browser that the frames are coming from that
     # mimetype="multipart/x-mixed-replace; boundary=frame" -> tells brower, response has >1 images seperated in frames
     # "This is the magic that makes the MJPEG-style stream work."
 
+@app.route("/start_camera", methods=["POST"])
+def start_camera():
+    global camera_running
+    camera_running = True
+    return "LIVE FEED IS ON"
 
-@app.route("/upload", methods=["POST"])# creates upload route
-def upload():
-    #runs when upload happens
-    video = request.files["video"]
-    video.save("uploads/input.mp4")
-    return "Uploaded!"
+@app.route("/stop_camera", methods=["POST"])
+def stop_camera():
+    global camera_running
+    camera_running = False
+    return "LIVE FEED IS OFF"
 
 
 
